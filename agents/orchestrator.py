@@ -399,17 +399,23 @@ async def run_orchestrator_direct(query: str) -> dict[str, Any]:
     synthesis_prompt = build_synthesis_prompt(synthesis_input)
 
     try:
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types as genai_types
 
-        # Configure Gemini (uses GOOGLE_API_KEY env var or ADK defaults)
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            generation_config=genai.types.GenerationConfig(
+        api_key = os.getenv("GOOGLE_API_KEY", "")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY not set")
+
+        # New google-genai Client API (google-generativeai is deprecated)
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=synthesis_prompt,
+            config=genai_types.GenerateContentConfig(
                 temperature=0.3,       # Low temperature for factual reports
                 max_output_tokens=2048,
             ),
         )
-        response = model.generate_content(synthesis_prompt)
         raw_text = response.text
 
     except Exception as e:

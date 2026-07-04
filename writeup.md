@@ -12,7 +12,7 @@
 Pharmaceutical analysts spend **3–5 days** per competitive intelligence report:
 
 - 4–6 hours on PubMed manually searching and triaging relevant clinical literature
-- 2–3 hours auditing ClinicalTrials.gov for active, completed, and recruiting studies
+- 2–3 hours cross-referencing drug pipeline databases for phase and target data
 - 1–2 hours parsing FDA approval databases, label text, and FAERS safety data
 - A full day synthesizing findings into a coherent, citation-backed report
 
@@ -31,7 +31,7 @@ An analyst types one question:
 The system:
 1. **Checks guardrails** — blocks PHI, out-of-scope queries, enforces rate limits
 2. **Extracts entities** — drug class, indication, time window, known drug synonyms
-3. **Fans out to 3 specialist agents in parallel** — PubMed, ClinicalTrials, openFDA
+3. **Fans out to 3 specialist agents in parallel** — PubMed, Open Targets, openFDA
 4. **Aggregates and scores** — relevance-ranks 10 articles, 15 trials, 4 FDA records
 5. **Synthesizes with Gemini** — produces a 5-section professional report with citations
 
@@ -52,12 +52,12 @@ ROOT ORCHESTRATOR (ADK LlmAgent)
         └── Gemini synthesis → 5-section report
         │              │               │
         ▼              ▼               ▼
-LITERATURE SCOUT  TRIAL MONITOR  REGULATORY WATCH
-(PubMed MCP)     (CT.gov MCP)   (openFDA MCP)
+LITERATURE SCOUT  PIPELINE SCOUT   REGULATORY WATCH
+(PubMed MCP)     (OT MCP)         (openFDA MCP)
         │              │               │
         ▼              ▼               ▼
-  NCBI EUtils   ClinicalTrials    openFDA API
-                REST API v2       drugsfda/label/event
+  NCBI EUtils   Open Targets       openFDA API
+                Platform (EBI)     drugsfda/label/event
 ```
 
 The three specialist agents run **simultaneously** via `asyncio.gather`, then the orchestrator passes their structured JSON outputs to Gemini for cross-source synthesis.
@@ -84,7 +84,7 @@ orchestrator = LlmAgent(
     name="clinicaledge_orchestrator",
     model="gemini-2.0-flash",
     instruction=ORCHESTRATOR_SYSTEM_PROMPT,
-    agents=[literature_scout, trial_monitor, regulatory_watch],
+    agents=[literature_scout, pipeline_scout, regulatory_watch],
 )
 ```
 
@@ -98,7 +98,7 @@ Three purpose-built MCP servers wrap public pharma APIs, each implementing the `
 
 **PubMed MCP** (`pubmed_mcp.py`): Wraps NCBI E-utilities (ESearch + ESummary + EFetch). Exposes `search_pubmed(query, max_results, min_year)` and `fetch_abstract(pmid)`. Returns structured article records with PMID, authors, journal, publication date, DOI, and abstract snippet.
 
-**ClinicalTrials MCP** (`clinicaltrials_mcp.py`): Wraps ClinicalTrials.gov REST API v2. Exposes `search_trials(query, status, phase, max_results)`. Extracts and normalizes trial records including NCT ID, phase, sponsor, enrollment, primary endpoint, and completion date.
+**Open Targets MCP** (`opentargets_mcp.py`): Wraps the Open Targets Platform GraphQL API (EMBL-EBI). Exposes `search_ot_drugs(query, max_results)`, `get_drug_details(chembl_id)`, and `get_disease_drugs(disease_query, max_results)`. Returns drug-disease associations with clinical trial phase, mechanism of action, target gene, drug type, and approval status.
 
 **openFDA MCP** (`fda_mcp.py`): Wraps three openFDA endpoints. `search_drug_approvals()` queries `drugsfda.json` for NDA/BLA records. `search_adverse_events()` queries FAERS event counts. `search_drug_labels()` pulls SPL label text including mechanism of action, indications, and boxed warnings.
 
@@ -141,7 +141,7 @@ def run_all_guardrails(query: str) -> GuardrailResult:
 | Agent | Results | Time |
 |-------|---------|------|
 | Literature Scout | 10 PubMed articles (relevance scored) | parallel |
-| Trial Monitor | 15 trials (phase/sponsor aggregation) | parallel |
+| Pipeline Scout | 15+ drug-disease associations (phase/target) | parallel |
 | Regulatory Watch | 4 drugs × FDA approvals + FAERS + labels | parallel |
 | **Total agent time** | **— — —** | **~35s** |
 | Gemini synthesis | 5-section report (~800 words, cited) | ~12s |

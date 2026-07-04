@@ -14,7 +14,7 @@
 
 Pharmaceutical competitive intelligence (CI) reports take **3–5 days** of manual analyst work:
 - Hours searching PubMed for relevant literature
-- Manually checking ClinicalTrials.gov for active/completed trials
+- Manually cross-referencing drug pipeline databases for phase/target data
 - Parsing FDA approval databases for regulatory history
 - Writing up a coherent multi-section report
 
@@ -38,15 +38,15 @@ ANALYST QUERY (natural language)
             │            │           │
             ▼            ▼           ▼
   ┌──────────────┐ ┌──────────┐ ┌──────────────┐
-  │ LITERATURE   │ │  TRIAL   │ │  REGULATORY  │
-  │ SCOUT        │ │ MONITOR  │ │  WATCH       │
-  │ (PubMed MCP) │ │ (CT MCP) │ │ (FDA MCP)    │
+  │ LITERATURE   │ │ PIPELINE │ │  REGULATORY  │
+  │ SCOUT        │ │ SCOUT    │ │  WATCH       │
+  │ (PubMed MCP) │ │ (OT MCP) │ │ (FDA MCP)    │
   └──────┬───────┘ └────┬─────┘ └──────┬───────┘
          │              │              │
          ▼              ▼              ▼
-    NCBI EUtils   CT.gov REST v2   openFDA API
-    (literature)  (clinical trials) (approvals/
-                                    FAERS/labels)
+    NCBI EUtils   Open Targets     openFDA API
+    (literature)  Platform (EBI)   (approvals/
+                  (drug pipeline)   FAERS/labels)
          │              │              │
          └──────────────┴──────────────┘
                         │
@@ -81,7 +81,7 @@ orchestrator = LlmAgent(
     name="orchestrator",
     model="gemini-2.0-flash",
     instruction=ORCHESTRATOR_PROMPT,
-    agents=[literature_scout, trial_monitor, regulatory_watch],
+    agents=[literature_scout, pipeline_scout, regulatory_watch],
 )
 ```
 
@@ -94,7 +94,7 @@ Three dedicated MCP servers, each wrapping a public pharma API:
 | Server | API | Key Tools |
 |--------|-----|-----------|
 | `pubmed_mcp.py` | NCBI E-utilities | `search_pubmed`, `fetch_abstract` |
-| `clinicaltrials_mcp.py` | ClinicalTrials.gov REST v2 | `search_trials` |
+| `opentargets_mcp.py` | Open Targets Platform (EMBL-EBI) GraphQL | `search_ot_drugs`, `get_drug_details`, `get_disease_drugs` |
 | `fda_mcp.py` | openFDA | `search_drug_approvals`, `search_adverse_events`, `search_drug_labels` |
 
 Each server implements `list_tools()` + `call_tool()` per the MCP protocol spec with JSON Schema typed inputs/outputs. Agents bind to them via `MCPToolset + StdioServerParameters`.
@@ -122,11 +122,11 @@ ClinicalEdge/
 ├── agents/
 │   ├── orchestrator.py         # Root LlmAgent — entity extraction, fan-out, synthesis
 │   ├── literature_scout.py     # PubMed specialist
-│   ├── trial_monitor.py        # ClinicalTrials.gov specialist
+│   ├── trial_monitor.py        # Open Targets pipeline specialist
 │   └── regulatory_watch.py     # openFDA specialist
 ├── mcp_servers/
 │   ├── pubmed_mcp.py           # NCBI E-utilities MCP server
-│   ├── clinicaltrials_mcp.py   # ClinicalTrials.gov MCP server
+│   ├── opentargets_mcp.py      # Open Targets Platform MCP server
 │   └── fda_mcp.py              # openFDA MCP server
 ├── skills/
 │   ├── search_skill.py         # Query building & relevance scoring
